@@ -6,6 +6,7 @@ UML Class Diagram Builder with Attributes, Operations & Relationship Routing
 
 from typing import Dict, Tuple, List, Any, Optional
 from .collision import CollisionDetector
+from .config import get_config, apply_jitter, JitterConfig
 from .client import (
     attach_link_symbol,
     KIND_CLASS,
@@ -33,6 +34,7 @@ class ClassDiagramBuilder:
         spacing_x: int = 12000,
         start_y: int = 16000,
         spacing_y: int = -8000,
+        jitter: Optional[JitterConfig] = None,
     ):
         self.diagram = diagram
         self.model = diagram.Model
@@ -40,6 +42,7 @@ class ClassDiagramBuilder:
         self.spacing_x = spacing_x
         self.start_y = start_y
         self.spacing_y = spacing_y
+        self.jitter = jitter or get_config().jitter
 
         self.classes: Dict[str, Tuple[Any, Any]] = {}
         self.links: List[Tuple[Any, Any]] = []
@@ -58,7 +61,10 @@ class ClassDiagramBuilder:
         except Exception:
             cls = self.model.Classes.CreateNew()
 
-        cls.SetName(name)
+        try:
+            cls.SetName(name)
+        except Exception:
+            cls.Name = name
         if is_interface and hasattr(cls, "Stereotype"):
             cls.Stereotype = "Interface"
 
@@ -66,6 +72,7 @@ class ClassDiagramBuilder:
         idx = len(self.classes)
         x_pos = x if x is not None else self.start_x + (idx % 3) * self.spacing_x
         y_pos = y if y is not None else self.start_y + (idx // 3) * self.spacing_y
+        x_pos, y_pos = apply_jitter(x_pos, y_pos, self.jitter)
 
         try:
             if hasattr(sym, "Position"):
@@ -90,7 +97,10 @@ class ClassDiagramBuilder:
             return
         cls_obj, _ = self.classes[class_name]
         attr = cls_obj.Attributes.CreateNew()
-        attr.SetName(name)
+        try:
+            attr.SetName(name)
+        except Exception:
+            attr.Name = name
         attr.DataType = data_type
         # Visibility mapping: + = Public, - = Private, # = Protected
         vis_map = {"+": 0, "-": 1, "#": 2}
@@ -103,7 +113,10 @@ class ClassDiagramBuilder:
             return
         cls_obj, _ = self.classes[class_name]
         op = cls_obj.Operations.CreateNew()
-        op.SetName(name)
+        try:
+            op.SetName(name)
+        except Exception:
+            op.Name = name
         op.ReturnType = return_type
         vis_map = {"+": 0, "-": 1, "#": 2}
         if hasattr(op, "Visibility"):
@@ -155,7 +168,10 @@ class ClassDiagramBuilder:
             assoc = self.model.Associations.CreateNew()
 
         if name:
-            assoc.SetName(name)
+            try:
+                assoc.SetName(name)
+            except Exception:
+                assoc.Name = name
 
         if hasattr(assoc, "Object1"):
             assoc.Object1 = obj_a

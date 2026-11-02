@@ -20,15 +20,37 @@ def copy_or_link_skill(source_dir: Path, target_dir: Path, symlink: bool = False
         if target_dir.is_symlink():
             target_dir.unlink()
         else:
-            shutil.rmtree(target_dir)
+            try:
+                os.rmdir(target_dir)  # If it is a Windows junction
+            except OSError:
+                shutil.rmtree(target_dir)
 
     if symlink:
-        try:
-            target_dir.symlink_to(source_dir, target_is_directory=True)
-            print(f"Created symlink to skill at: {target_dir}")
-            return
-        except OSError:
-            print("Symlink creation failed (permission denied). Falling back to direct copy...")
+        if sys.platform == "win32":
+            try:
+                import _winapi
+                _winapi.CreateJunction(str(source_dir), str(target_dir))
+                print(f"Created directory junction to skill at: {target_dir}")
+                return
+            except Exception:
+                try:
+                    subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", str(target_dir), str(source_dir)],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    print(f"Created directory junction via mklink at: {target_dir}")
+                    return
+                except Exception:
+                    pass
+        else:
+            try:
+                target_dir.symlink_to(source_dir, target_is_directory=True)
+                print(f"Created symlink to skill at: {target_dir}")
+                return
+            except OSError:
+                print("Symlink creation failed. Falling back to direct copy...")
 
     ignore = shutil.ignore_patterns(
         ".git", "__pycache__", "*.pyc", "build", "dist", "*.egg-info", ".vscode",
@@ -43,10 +65,12 @@ def install_to_project(source_dir: Path, project_root: Path, symlink: bool = Fal
     print(f"\nInstalling skill at Project Level: {project_root}")
 
     # Project-level locations for standard agents:
-    # 1. .agents/skills (Universal / SpecKit standard)
-    # 2. .claude/skills (Claude Code project directory)
-    # 3. .gemini/skills (Antigravity project directory)
+    # 1. .dsh/skills (DeepSeek Harness project directory)
+    # 2. .agents/skills (Universal / SpecKit standard)
+    # 3. .claude/skills (Claude Code project directory)
+    # 4. .gemini/skills (Antigravity project directory)
     destinations = [
+        project_root / ".dsh" / "skills" / "powerdesigner-com-edit",
         project_root / ".agents" / "skills" / "powerdesigner-com-edit",
         project_root / ".claude" / "skills" / "powerdesigner-com-edit",
         project_root / ".gemini" / "skills" / "powerdesigner-com-edit"
@@ -69,9 +93,9 @@ def main():
     )
     parser.add_argument(
         "--target",
-        choices=["all", "gemini", "claude"],
+        choices=["all", "dsh", "gemini", "claude"],
         default="all",
-        help="Target agent platform for global installation (default: all)"
+        help="Target agent platform for global installation: 'all', 'dsh', 'gemini', or 'claude' (default: all)"
     )
     parser.add_argument(
         "--project-dir",
@@ -114,6 +138,10 @@ def main():
     # 3. Global user-level installation
     home = Path.home()
     print("\nInstalling skill at Global User Level (~/):")
+
+    if args.target in ["all", "dsh"]:
+        dest = home / ".dsh" / "skills" / "powerdesigner-com-edit"
+        copy_or_link_skill(repo_root, dest, symlink=args.link)
 
     if args.target in ["all", "gemini"]:
         dest = home / ".gemini" / "skills" / "powerdesigner-com-edit"

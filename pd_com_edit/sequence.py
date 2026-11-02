@@ -7,6 +7,7 @@ UML Sequence Diagram Builder with Call-Stack Activation Bar Automation
 from typing import List, Dict, Tuple, Optional, Any
 from .collision import CollisionDetector
 from .client import attach_link_symbol, ensure_dynamic
+from .config import get_config, apply_jitter, JitterConfig
 
 class SequenceDiagramBuilder:
     """
@@ -18,13 +19,22 @@ class SequenceDiagramBuilder:
     - Overlap verification before completion
     """
 
-    def __init__(self, diagram: Any, start_x: int = 1500, spacing_x: int = 2500, start_y: int = -1500, step_y: int = -500):
+    def __init__(
+        self,
+        diagram: Any,
+        start_x: int = 1500,
+        spacing_x: int = 2500,
+        start_y: int = -1500,
+        step_y: int = -500,
+        jitter: Optional[JitterConfig] = None
+    ):
         self.diagram = ensure_dynamic(diagram)
         self.model = ensure_dynamic(self.diagram.Model)
         self.start_x = start_x
         self.spacing_x = spacing_x
         self.start_y = start_y
         self.step_y = step_y
+        self.jitter = jitter or get_config().jitter
 
         self.lifelines: Dict[str, Tuple[object, object, int]] = {}  # name -> (obj, sym, x)
         self.messages: List[Dict[str, Any]] = []
@@ -35,11 +45,15 @@ class SequenceDiagramBuilder:
         """Add an Actor or Class lifeline."""
         idx = len(self.lifelines)
         x_pos = self.start_x + idx * self.spacing_x
+        x_pos, y_header = apply_jitter(x_pos, self.start_y + 800, self.jitter)
         
         if is_actor:
             obj = ensure_dynamic(self.model.Actors.CreateNew())
         else:
-            obj = ensure_dynamic(self.model.Classes.CreateNew())
+            try:
+                obj = ensure_dynamic(self.model.Objects.CreateNew())
+            except Exception:
+                obj = ensure_dynamic(self.model.Classes.CreateNew())
         try:
             obj.SetName(name)
         except Exception:
@@ -48,7 +62,7 @@ class SequenceDiagramBuilder:
         sym = ensure_dynamic(self.diagram.AttachObject(obj))
         try:
             sym.Position.X = x_pos
-            sym.Position.Y = self.start_y + 800
+            sym.Position.Y = y_header
         except Exception:
             pass
 
@@ -105,8 +119,8 @@ class SequenceDiagramBuilder:
             label = msg_info["label"]
             is_ret = msg_info["is_return"]
 
-            s_obj, s_sym, _ = self.lifelines[s_name]
-            r_obj, r_sym, _ = self.lifelines[r_name]
+            s_obj, s_sym, s_x = self.lifelines[s_name]
+            r_obj, r_sym, r_x = self.lifelines[r_name]
 
             msg = ensure_dynamic(self.model.Messages.CreateNew())
             try:
@@ -119,8 +133,10 @@ class SequenceDiagramBuilder:
 
             try:
                 if hasattr(msg_sym, "SourcePoint"):
+                    msg_sym.SourcePoint.X = s_x
                     msg_sym.SourcePoint.Y = y
                 if hasattr(msg_sym, "DestinationPoint"):
+                    msg_sym.DestinationPoint.X = r_x
                     msg_sym.DestinationPoint.Y = y
             except Exception:
                 pass
@@ -178,10 +194,17 @@ class SequenceDiagramBuilder:
                 cf.InteractionOperator = frag["operator"]
 
             sym = self.diagram.AttachObject(cf)
-            if hasattr(sym, "Position") and hasattr(sym, "Size"):
+            if hasattr(sym, "Position"):
                 sym.Position.X = (x_left + x_right) // 2
                 sym.Position.Y = (y_top + y_bottom) // 2
-                sym.Size.Width = abs(x_right - x_left)
-                sym.Size.Height = abs(y_top - y_bottom)
+            if hasattr(sym, "Size"):
+                w = abs(x_right - x_left)
+                h = abs(y_top - y_bottom)
+                if hasattr(sym.Size, "X"):
+                    sym.Size.X = w
+                    sym.Size.Y = h
+                elif hasattr(sym.Size, "Width"):
+                    sym.Size.Width = w
+                    sym.Size.Height = h
         except Exception as e:
             print(f"[SequenceDiagramBuilder] Fragment render note: {e}")

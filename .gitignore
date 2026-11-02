@@ -22,6 +22,8 @@ wheels/
 
 # Image exports and test outputs
 exports/
+output_images/
+output_models/
 *.bak
 *.tmp
 *.log

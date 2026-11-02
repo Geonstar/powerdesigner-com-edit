@@ -11,6 +11,7 @@ Features:
 from typing import Dict, Tuple, List, Optional, Any
 from .collision import CollisionDetector
 from .client import attach_link_symbol
+from .config import get_config, apply_jitter, JitterConfig
 
 
 class ActivityDiagramBuilder:
@@ -27,6 +28,7 @@ class ActivityDiagramBuilder:
         step_y: int = -6000,
         node_width: int = 14000,
         node_height: int = 4000,
+        jitter: Optional[JitterConfig] = None,
     ):
         self.diagram = diagram
         self.model = diagram.Model
@@ -35,6 +37,7 @@ class ActivityDiagramBuilder:
         self.step_y = step_y
         self.node_width = node_width
         self.node_height = node_height
+        self.jitter = jitter or get_config().jitter
 
         self.nodes: Dict[str, Tuple[Any, Any]] = {}
         self.flows: List[Tuple[Any, Any]] = []
@@ -55,6 +58,7 @@ class ActivityDiagramBuilder:
         idx = len(self.nodes)
         pos_x = x if x is not None else self.start_x
         pos_y = y if y is not None else (self.start_y + idx * self.step_y)
+        pos_x, pos_y = apply_jitter(pos_x, pos_y, self.jitter)
         w = width or self.node_width
         h = height or self.node_height
 
@@ -119,8 +123,13 @@ class ActivityDiagramBuilder:
         if guard:
             if hasattr(flow, "Condition"):
                 flow.Condition = guard
-            if hasattr(flow, "Name"):
-                flow.Name = f"[{guard}]"
+            try:
+                flow.SetName(f"[{guard}]")
+            except Exception:
+                try:
+                    flow.Name = f"[{guard}]"
+                except Exception:
+                    pass
 
         sym_l = attach_link_symbol(self.diagram, flow)
         self.flows.append((flow, sym_l))

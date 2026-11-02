@@ -4,7 +4,7 @@ param (
     [ValidateSet("global", "project", "both")]
     [string]$Scope = "global",
 
-    [ValidateSet("all", "gemini", "claude")]
+    [ValidateSet("all", "dsh", "gemini", "claude")]
     [string]$Target = "all",
 
     [string]$ProjectDir = $PWD.Path,
@@ -50,6 +50,7 @@ function Deploy-Skill([string]$Destination) {
 if ($Scope -eq "project" -or $Scope -eq "both") {
     Write-Host "`nDeploying to Project Level: $ProjectDir" -ForegroundColor Cyan
     $projectTargets = @(
+        (Join-Path $ProjectDir ".dsh\skills\powerdesigner-com-edit"),
         (Join-Path $ProjectDir ".agents\skills\powerdesigner-com-edit"),
         (Join-Path $ProjectDir ".claude\skills\powerdesigner-com-edit"),
         (Join-Path $ProjectDir ".gemini\skills\powerdesigner-com-edit")
@@ -66,6 +67,9 @@ if ($Scope -eq "global" -or $Scope -eq "both") {
     Write-Host "`nDeploying to Global User Level ($HomeDir):" -ForegroundColor Cyan
 
     $globalTargets = @()
+    if ($Target -eq "all" -or $Target -eq "dsh") {
+        $globalTargets += (Join-Path $HomeDir ".dsh\skills\powerdesigner-com-edit")
+    }
     if ($Target -eq "all" -or $Target -eq "gemini") {
         $globalTargets += (Join-Path $HomeDir ".gemini\skills\powerdesigner-com-edit")
     }

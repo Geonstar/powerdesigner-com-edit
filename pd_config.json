@@ -1,0 +1,52 @@
+{
+  "jitter": {
+    "enabled": false,
+    "range_x": [-400, 400],
+    "range_y": [-300, 300],
+    "seed": null
+  },
+  "workspace": {
+    "auto_detect": true,
+    "auto_register": true,
+    "auto_create": true,
+    "workspace_name": "ProjectWorkspace",
+    "workspace_path": null,
+    "save_on_model_add": true
+  },
+  "file_naming": {
+    "separate_files": true,
+    "output_dir": "./output_models",
+    "oom_extension": ".oom",
+    "pdm_extension": ".pdm",
+    "prefix": "",
+    "suffix": ""
+  },
+  "layout": {
+    "seq_start_x": 1500,
+    "seq_spacing_x": 2500,
+    "seq_start_y": -1500,
+    "seq_step_y": -500,
+    "seq_activation_tier_offset": 120,
+    "uc_col1_x": -38000,
+    "uc_col2_x": -14000,
+    "uc_col3_x": 14000,
+    "uc_col4_x": 38000,
+    "uc_start_y": 28000,
+    "uc_step_y": -8000,
+    "class_start_x": 2000,
+    "class_spacing_x": 12000,
+    "class_start_y": 16000,
+    "class_spacing_y": -8000
+  },
+  "export": {
+    "format": "PNG",
+    "crop_whitespace": true,
+    "margin": 25,
+    "output_dir": "./output_images"
+  },
+  "com": {
+    "visible": false,
+    "timeout_sec": 15,
+    "preferred_prog_id": "PowerDesigner.Application.16.5"
+  }
+}

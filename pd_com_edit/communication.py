@@ -12,12 +12,8 @@ Features:
 import math
 from typing import Dict, Tuple, List, Optional, Any
 from .collision import CollisionDetector
-from .client import attach_link_symbol
-
-
-from typing import Dict, Tuple, List, Optional, Any
-from .collision import CollisionDetector
 from .client import attach_link_symbol, ensure_dynamic
+from .config import get_config, apply_jitter, JitterConfig
 
 
 class CommunicationDiagramBuilder:
@@ -33,6 +29,7 @@ class CommunicationDiagramBuilder:
         center_x: int = 0,
         center_y: int = 0,
         default_radius: int = 25000,
+        jitter: Optional[JitterConfig] = None,
     ):
         self.diagram = ensure_dynamic(diagram)
         self.model = ensure_dynamic(self.diagram.Model)
@@ -46,6 +43,7 @@ class CommunicationDiagramBuilder:
         self.center_x = center_x
         self.center_y = center_y
         self.default_radius = default_radius
+        self.jitter = jitter or get_config().jitter
 
         self.actors: Dict[str, Tuple[Any, Any]] = {}
         self.objects: Dict[str, Tuple[Any, Any]] = {}
@@ -72,10 +70,11 @@ class CommunicationDiagramBuilder:
         sym = ensure_dynamic(self.diagram.AttachObject(act))
 
         if x is not None and y is not None:
+            pos_x, pos_y = apply_jitter(x, y, self.jitter)
             try:
                 if hasattr(sym, "Position"):
-                    sym.Position.X = x
-                    sym.Position.Y = y
+                    sym.Position.X = pos_x
+                    sym.Position.Y = pos_y
             except Exception:
                 pass
 
@@ -135,11 +134,16 @@ class CommunicationDiagramBuilder:
 
         sym = ensure_dynamic(self.diagram.AttachObject(obj))
 
+        pos_x = x
+        pos_y = y
+        if pos_x is not None and pos_y is not None:
+            pos_x, pos_y = apply_jitter(pos_x, pos_y, self.jitter)
+
         try:
-            if x is not None and hasattr(sym, "Position"):
-                sym.Position.X = x
-            if y is not None and hasattr(sym, "Position"):
-                sym.Position.Y = y
+            if pos_x is not None and hasattr(sym, "Position"):
+                sym.Position.X = pos_x
+            if pos_y is not None and hasattr(sym, "Position"):
+                sym.Position.Y = pos_y
             if hasattr(sym, "Size"):
                 if hasattr(sym.Size, "X"):
                     sym.Size.X = width

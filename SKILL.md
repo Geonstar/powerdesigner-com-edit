@@ -1,6 +1,6 @@
 ---
 name: powerdesigner-com-edit
-description: Automate SAP PowerDesigner modeling, diagram layout, collision/overlap checking, activation bar generation, and batch export via Python COM. Use when creating/editing OOM, CDM, or PDM models, generating sequence diagrams with exact activation bars and alt frames, arranging use case diagrams, fixing overlapping text/lines/activation bars, or exporting clean diagrams for reports.
+description: Automate SAP PowerDesigner modeling, diagram layout, collision/overlap checking, activation bar generation, workspace management, and batch export via Python COM. Use when creating/editing OOM, CDM, or PDM models, generating sequence diagrams with exact activation bars and alt frames, arranging use case diagrams, fixing overlapping text/lines/activation bars, configuring coordinate jitter, managing .sws workspaces, or exporting clean diagrams for reports.
 ---
 
 # PowerDesigner COM Automation & Edit Skill (`powerdesigner-com-edit`)
@@ -9,65 +9,213 @@ Use this skill to automate, construct, audit, resolve visual overlaps, and batch
 
 ## Core Capabilities
 
-1. **Headless & Interactive COM Control**: Open, create, modify, and save `.pbw` (Workspaces), `.oom` (Object-Oriented Models), and `.pdm` (Physical Data Models).
-2. **Collision Detection & Overlap Auditing (重叠检查与自动规避)**:
+1. **Centralized Configuration (`pd_config.json`)**:
+   - Zero hardcoding: Control coordinate offsets, file prefixes/suffixes, layout gaps, and export rules via JSON/YAML.
+2. **Visual Jitter / Coordinate Perturbation (随机坐标微调)**:
+   - Configurable slight random variations to element positions (`range_x`, `range_y`), eliminating rigid, copy-paste aesthetic slop.
+3. **Independent Model File Generation (单图独立文件)**:
+   - Each diagram is created and saved into its own dedicated file (e.g. `图1_用例图.oom`, `图2_顺序图.oom`, `图3_物理数据模型.pdm`), avoiding giant, unmaintainable single-file dumps.
+4. **Workspace Auto-Detection & Management (`.sws` / `.pbw`)**:
+   - Automatically discovers or creates a PowerDesigner Workspace file and registers newly generated model files into it, keeping the entire project organized in the PowerDesigner Object Browser tree.
+5. **Headless & Interactive COM Control**:
+   - Programmatically launch, connect, inspect, and modify PowerDesigner models without manual mouse clicks.
+6. **Collision Detection & Overlap Auditing (重叠检查与自动规避)**:
    - **AABB Geometric Collision Check**: Audits all diagram symbols for bounding box and label intersections.
    - **Activation Bar Collision Check**: Verifies 0 same-depth intersecting activation intervals on all lifelines.
    - **Auto-Resolution Layout Shift**: Automatically adjusts vertical/horizontal coordinates to enforce minimum clearance.
-   - **Draft Annotation Cleaner**: Automatically identifies and deletes lingering development notes (e.g. `（实现中，待整链验收）`, `兼有教学管理权限...`).
-3. **Sequence Diagram Automation**:
-   - Automated timeline placement of lifelines and synchronous/asynchronous messages.
-   - **Call-Stack Activation Bar Algorithm**: Accurately bounds activation bars and applies horizontal nesting offsets (`X_offset = X_base + depth * 120`) to prevent overlapping blocks.
-   - **Combined Fragment (`alt`, `opt`, `loop`) Framing**: Calculates proper bounding boxes covering all participating lifelines and branch regions.
-4. **Use Case & Class Diagram Layout & Connector Attachment**:
-   - 3-column collision-free placement (Primary Actors -> System Boundary Use Cases -> External Systems).
-   - Dynamic label spacing to eliminate overlapping text.
-   - **Guaranteed Connector Rendering**: Always attaches 1D links (associations, generalizations, dependencies, references) via `AttachLinkObject` (`attach_link_symbol`) with `Object1`/`Object2` binding, preventing missing relationship lines.
-5. **Clean Production Export**:
-   - Batch-export diagrams to PNG/JPEG with automatic bounding-box trimming (removes giant whitespace borders).
+   - **Draft Annotation Cleaner**: Automatically identifies and deletes lingering development notes.
+7. **Sequence Diagram Automation**:
+   - Timeline placement of lifelines and synchronous/asynchronous messages with nesting offsets (`X_offset = X_base + depth * 120`).
+   - Combined fragment (`alt`, `opt`, `loop`) dynamic boundary calculation.
+8. **Use Case & Class Diagram Layout**:
+   - Canonical 4-column use case layout and vertical tree class hierarchy.
+   - Guaranteed link attachments via `AttachLinkObject` (`attach_link_symbol`).
+9. **Clean Production Export**:
+   - High-res PNG/EMF diagram export with automated whitespace cropping.
 
 ---
 
-## 1. Quick Start / CLI Usage
+## 1. Quick Start & Project-Wide Workflow
 
-The skill provides a Python automation module in `scripts/pd_automation.py`.
+### Centralized Configuration File (`pd_config.json`)
+You can place a `pd_config.json` in your workspace root to configure all options without modifying code:
 
-### Sequence Diagram with Activation Bars & Overlap Audit:
+```json
+{
+  "jitter": {
+    "enabled": true,
+    "range_x": [-300, 300],
+    "range_y": [-200, 200],
+    "seed": null
+  },
+  "workspace": {
+    "auto_detect": true,
+    "auto_register": true,
+    "auto_create": true,
+    "workspace_name": "ProjectWorkspace"
+  },
+  "file_naming": {
+    "separate_files": true,
+    "output_dir": "./output_models",
+    "prefix": "图_",
+    "suffix": "_工程"
+  }
+}
+```
+
+### Complete Code Pattern: Independent Diagrams + Workspace Registration
 ```python
-from scripts.pd_automation import (
+from pd_com_edit import (
     PowerDesignerClient,
     SequenceDiagramBuilder,
-    CollisionDetector,
-    ImageExporter
+    UseCaseDiagramBuilder,
+    PdmBuilder,
+    ImageExporter,
+    PDConfig,
+    JitterConfig,
+    set_config,
 )
 
+# 1. Initialize Client (reads pd_config.json automatically if present)
 client = PowerDesignerClient(visible=False)
-model = client.create_oom_model("ColdChainSystem")
-diagram = model.SequenceDiagrams.CreateNew()
-diagram.SetName("SD_ContainerAllocation")
 
-builder = SequenceDiagramBuilder(diagram)
+try:
+    # 2. Diagram 1: Use Case Diagram -> Saved to independent file & registered in workspace
+    model_uc = client.create_diagram_model("01_用例图", model_type="OOM")
+    diag_uc = model_uc.UseCases.CreateNew()
+    uc_builder = UseCaseDiagramBuilder(diag_uc)
+    uc_builder.add_actor("用户")
+    uc_builder.add_actor("后台管理系统", is_secondary=True)
+    uc_builder.add_use_case("登录鉴权", column=2)
+    uc_builder.add_use_case("创建订单", column=2)
+    uc_builder.link("用户", "登录鉴权")
+    uc_builder.link("用户", "创建订单")
+    # Saves as ./output_models/图_01_用例图_工程.oom and registers to .sws
+    client.save_diagram_as_file(model_uc, "01_用例图")
 
-# Add Lifelines
-builder.add_lifeline("Operator", is_actor=True)
-builder.add_lifeline("VueGateway")
-builder.add_lifeline("OrderController")
-builder.add_lifeline("ContainerService")
+    # 3. Diagram 2: Sequence Diagram -> Saved to independent file & registered in workspace
+    model_seq = client.create_diagram_model("02_系统时序图", model_type="OOM")
+    diag_seq = model_seq.SequenceDiagrams.CreateNew()
+    seq_builder = SequenceDiagramBuilder(diag_seq)
+    seq_builder.add_lifeline("用户", is_actor=True)
+    seq_builder.add_lifeline("网关服务")
+    seq_builder.add_lifeline("订单中心")
+    seq_builder.add_message("用户", "网关服务", "POST /orders")
+    seq_builder.add_message("网关服务", "订单中心", "createOrder()")
+    seq_builder.add_message("订单中心", "网关服务", "201 Created", is_return=True)
+    seq_builder.add_message("网关服务", "用户", "200 OK", is_return=True)
+    seq_builder.build_messages()
+    client.save_diagram_as_file(model_seq, "02_系统时序图")
 
-# Add Synchronous Calls & Returns
-builder.add_message("Operator", "VueGateway", "clickAllocate()")
-builder.add_message("VueGateway", "OrderController", "POST /allocation")
-builder.add_message("OrderController", "ContainerService", "lockAndAssign()")
-builder.add_message("ContainerService", "OrderController", "200 ALLOCATED", is_return=True)
-builder.add_message("OrderController", "VueGateway", "200 OK", is_return=True)
-builder.add_message("VueGateway", "Operator", "renderSuccess()", is_return=True)
+    # 4. Workspace Status
+    print(f"Workspace path: {client.workspace_mgr.workspace_path}")
+    for item in client.workspace_mgr.list_models():
+        folder_tag = f" [{item['folder']}]" if item.get("folder") else ""
+        print(f"Registered model: {item['name']} -> {item['url']}{folder_tag}")
 
-# Build, calculate activation bars, and run automated overlap audit
-completed_bars = builder.build_messages()
+finally:
+    client.close_all_safely()
+```
 
-# Save & Export Image (with auto whitespace crop)
-ImageExporter.export(diagram, "output/02-allocation-sequence.png", auto_crop=True)
-client.close_all_safely()
+### Declarative Pipeline API (One-Shot Diagram Construction)
+For rapid agentic construction without boilerplate model/diagram lifecycle management, use the top-level pipeline functions:
+
+```python
+from pd_com_edit import (
+    build_sequence_diagram,
+    build_usecase_diagram,
+    build_pdm_diagram,
+)
+
+# 1. Sequence Diagram in one call:
+res_seq = build_sequence_diagram(
+    name="01_用户下单时序",
+    lifelines=[
+        {"name": "买家", "is_actor": True},
+        "订单网关",
+        "库存服务",
+        "支付中心",
+    ],
+    messages=[
+        {"sender": "买家", "receiver": "订单网关", "label": "submitOrder()"},
+        {"sender": "订单网关", "receiver": "库存服务", "label": "checkAndDeduct()"},
+        {"sender": "库存服务", "receiver": "订单网关", "label": "stockOk", "is_return": True},
+        {"sender": "订单网关", "receiver": "支付中心", "label": "createPayment()"},
+        {"sender": "支付中心", "receiver": "订单网关", "label": "payUrl", "is_return": True},
+        {"sender": "订单网关", "receiver": "买家", "label": "orderCreated", "is_return": True},
+    ],
+    folder="交易模块",          # Groups model into <Folder Name="交易模块"> inside .sws
+    export_image=True,         # Auto-exports cropped PNG
+)
+print(f"Model saved to: {res_seq['model_path']}")
+print(f"Image exported to: {res_seq['image_path']}")
+
+# 2. Use Case Diagram in one call:
+res_uc = build_usecase_diagram(
+    name="02_订单用例图",
+    actors=["客户", {"name": "支付系统", "is_secondary": True}],
+    usecases=["浏览商品", "下单支付", "申请退款"],
+    links=[("客户", "浏览商品"), ("客户", "下单支付"), ("支付系统", "下单支付")],
+    folder="订单模块",
+)
+
+# 3. Physical Data Model (PDM) in one call:
+res_pdm = build_pdm_diagram(
+    name="03_交易数据库模型",
+    tables=[
+        {
+            "code": "orders",
+            "name": "订单表",
+            "columns": [
+                {"code": "order_id", "pk": True, "type": "BIGINT"},
+                {"code": "buyer_id", "type": "BIGINT", "mandatory": True},
+                {"code": "amount", "type": "DECIMAL(12,2)"},
+            ]
+        },
+        {
+            "code": "order_items",
+            "name": "订单明细表",
+            "columns": [
+                {"code": "item_id", "pk": True, "type": "BIGINT"},
+                {"code": "order_id", "type": "BIGINT", "mandatory": True},
+                {"code": "sku_code", "type": "VARCHAR(64)"},
+            ]
+        }
+    ],
+    references=[
+        {
+            "parent_table": "orders",
+            "child_table": "order_items",
+            "parent_col": "order_id",
+            "child_col": "order_id",
+            "name": "FK_ORDER_ITEMS",
+        }
+    ],
+    folder="数据库模型",
+)
+```
+
+### PowerDesigner CLI Utilities
+The CLI supports workspace synchronization, config generation, note cleaning, and batch diagram export:
+
+```bash
+# Initialize external configuration file (pd_config.json)
+pd-edit init-config
+
+# List all registered models in the detected or specified workspace
+pd-edit workspace --list
+
+# Scan directory for all .oom / .pdm files and synchronize missing entries into workspace
+pd-edit workspace --sync ./output_models
+
+# Strip draft annotations from existing model
+pd-edit clean-notes ./output_models/图_01_用例图_工程.oom --save
+
+# Batch export all diagrams in a model to PNG with auto-crop
+pd-edit export ./output_models/图_01_用例图_工程.oom --out-dir ./exports
+
+# Force-terminate any frozen background PowerDesigner instances
+pd-edit kill-pd
 ```
 
 ---
@@ -236,7 +384,7 @@ PowerDesignerClient.kill_lingering_processes()
 
 ---
 
-## 6. References & Scripts
+## 9. References & Scripts
 
 - [Overlap Detection Guide](references/overlap_detection_guide.md)
 - [COM API Cheatsheet](references/com_api_cheatsheet.md)

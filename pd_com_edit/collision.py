@@ -8,6 +8,23 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass, field
 
 
+def _sym_wh(sym: Any) -> Tuple[int, int]:
+    """Safely get width and height from symbol Size object (.X/.Y or .Width/.Height)."""
+    try:
+        sz = getattr(sym, "Size", None)
+        if sz is not None:
+            w = getattr(sz, "Width", None)
+            if w is None:
+                w = getattr(sz, "X", 0)
+            h = getattr(sz, "Height", None)
+            if h is None:
+                h = getattr(sz, "Y", 0)
+            return int(w), int(h)
+    except Exception:
+        pass
+    return (0, 0)
+
+
 @dataclass
 class BoundingBox:
     """Axis-Aligned Bounding Box (AABB) in PowerDesigner coordinates."""
@@ -112,7 +129,7 @@ class CollisionDetector:
         if hasattr(sym, "Position") and hasattr(sym, "Size"):
             try:
                 x, y = sym.Position.X, sym.Position.Y
-                w, h = sym.Size.Width, sym.Size.Height
+                w, h = _sym_wh(sym)
                 return BoundingBox(
                     left=x - w // 2,
                     right=x + w // 2,
@@ -264,11 +281,14 @@ class CollisionDetector:
                 cur = valid_syms[i]
                 nxt = valid_syms[i + 1]
 
-                cur_bottom = cur.Position.Y - cur.Size.Height // 2
-                nxt_top = nxt.Position.Y + nxt.Size.Height // 2
+                _, cur_h = _sym_wh(cur)
+                _, nxt_h = _sym_wh(nxt)
+
+                cur_bottom = cur.Position.Y - cur_h // 2
+                nxt_top = nxt.Position.Y + nxt_h // 2
 
                 if nxt_top > cur_bottom - min_spacing:
-                    new_y = cur_bottom - min_spacing - nxt.Size.Height // 2
+                    new_y = cur_bottom - min_spacing - nxt_h // 2
                     nxt.Position.Y = new_y
         except Exception as e:
             print(f"[CollisionDetector] Vertical auto-resolve error: {e}")
@@ -284,11 +304,14 @@ class CollisionDetector:
                 cur = valid_syms[i]
                 nxt = valid_syms[i + 1]
 
-                cur_right = cur.Position.X + cur.Size.Width // 2
-                nxt_left = nxt.Position.X - nxt.Size.Width // 2
+                cur_w, _ = _sym_wh(cur)
+                nxt_w, _ = _sym_wh(nxt)
+
+                cur_right = cur.Position.X + cur_w // 2
+                nxt_left = nxt.Position.X - nxt_w // 2
 
                 if nxt_left < cur_right + min_spacing:
-                    new_x = cur_right + min_spacing + nxt.Size.Width // 2
+                    new_x = cur_right + min_spacing + nxt_w // 2
                     nxt.Position.X = new_x
         except Exception as e:
             print(f"[CollisionDetector] Horizontal auto-resolve error: {e}")

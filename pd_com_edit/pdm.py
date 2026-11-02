@@ -7,6 +7,7 @@ Physical Data Model (PDM) & Relational Schema Builder
 from typing import Dict, Tuple, List, Optional, Any
 from .client import attach_link_symbol
 from .collision import CollisionDetector
+from .config import get_config, apply_jitter, JitterConfig
 
 
 class PdmBuilder:
@@ -26,6 +27,7 @@ class PdmBuilder:
         spacing_x: int = 14000,
         start_y: int = 12000,
         spacing_y: int = -8000,
+        jitter: Optional[JitterConfig] = None,
     ):
         self.model = model
         self.diagram = diagram if diagram else (
@@ -37,6 +39,7 @@ class PdmBuilder:
         self.spacing_x = spacing_x
         self.start_y = start_y
         self.spacing_y = spacing_y
+        self.jitter = jitter or get_config().jitter
 
         self.tables: Dict[str, Tuple[Any, Any]] = {}
         self.references: List[Tuple[Any, Any]] = []
@@ -72,12 +75,16 @@ class PdmBuilder:
 
         tbl = self.model.Tables.CreateNew()
         tbl.Code = tbl_code
-        tbl.SetName(tbl_name)
+        try:
+            tbl.SetName(tbl_name)
+        except Exception:
+            tbl.Name = tbl_name
 
         sym = self.diagram.AttachObject(tbl)
         idx = len(self.tables)
         x_pos = x if x is not None else self.start_x + (idx % 3) * self.spacing_x
         y_pos = y if y is not None else self.start_y + (idx // 3) * self.spacing_y
+        x_pos, y_pos = apply_jitter(x_pos, y_pos, self.jitter)
 
         try:
             if hasattr(sym, "Position"):
@@ -134,7 +141,10 @@ class PdmBuilder:
         tbl_obj, _ = found
         col = tbl_obj.Columns.CreateNew()
         col.Code = col_code
-        col.SetName(col_name if col_name else col_code)
+        try:
+            col.SetName(col_name if col_name else col_code)
+        except Exception:
+            col.Name = col_name if col_name else col_code
         col.DataType = data_type
         col.Mandatory = is_mandatory
         if default_val:
@@ -150,7 +160,10 @@ class PdmBuilder:
             if not pk_key:
                 pk_key = tbl_obj.Keys.CreateNew()
                 pk_key.Code = f"PK_{tbl_obj.Code}"
-                pk_key.SetName(f"PK_{tbl_obj.Code}")
+                try:
+                    pk_key.SetName(f"PK_{tbl_obj.Code}")
+                except Exception:
+                    pk_key.Name = f"PK_{tbl_obj.Code}"
                 pk_key.Primary = True
             pk_key.Columns.Add(col)
 
@@ -174,7 +187,10 @@ class PdmBuilder:
         ref = self.model.References.CreateNew()
         code = ref_code or name or f"FK_{c_obj.Code}_{p_obj.Code}"
         ref.Code = code
-        ref.SetName(name or code)
+        try:
+            ref.SetName(name or code)
+        except Exception:
+            ref.Name = name or code
         ref.ParentTable = p_obj
         ref.ChildTable = c_obj
         if hasattr(ref, "Object1"):

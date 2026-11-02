@@ -32,10 +32,43 @@ def main():
     p_export.add_argument("--out-dir", "-o", default="./exports", help="Output directory for exported images")
     p_export.add_argument("--no-crop", action="store_true", help="Disable PIL white border auto-cropping")
 
+    # Subcommand: init-config
+    p_init = subparsers.add_parser("init-config", help="Initialize a default pd_config.json configuration file")
+    p_init.add_argument("--path", default="pd_config.json", help="Path to write configuration file")
+
+    # Subcommand: workspace
+    p_ws = subparsers.add_parser("workspace", help="Inspect or synchronize PowerDesigner workspace (.sws)")
+    p_ws.add_argument("--list", action="store_true", help="List all registered models in workspace")
+    p_ws.add_argument("--sync", metavar="DIR", help="Scan directory and synchronize models into workspace")
+    p_ws.add_argument("--ws-file", default=None, help="Explicit path to .sws workspace file")
+
     # Subcommand: kill-pd
     subparsers.add_parser("kill-pd", help="Force-kill any lingering pdshell16.exe processes")
 
     args = parser.parse_args()
+
+    if args.command == "init-config":
+        from .config import PDConfig
+        cfg = PDConfig()
+        cfg.save(args.path)
+        print(f"Created default configuration file: {args.path}")
+        return
+
+    if args.command == "workspace":
+        from .workspace import WorkspaceManager
+        mgr = WorkspaceManager(workspace_path=args.ws_file)
+        if args.sync:
+            added = mgr.scan_and_sync(args.sync)
+            print(f"Workspace ({mgr.workspace_path}): Synced {len(added)} model files from {args.sync}.")
+            for a in added:
+                print(f"  + {a}")
+        if args.list or not args.sync:
+            models = mgr.list_models()
+            print(f"Workspace ({mgr.workspace_path}): {len(models)} models registered.")
+            for idx, m in enumerate(models, 1):
+                f_info = f" [Folder: {m['folder']}]" if m.get("folder") else ""
+                print(f"  {idx}. {m['name']} ({m['type']}) -> {m['url']}{f_info}")
+        return
 
     if args.command == "kill-pd":
         PowerDesignerClient.kill_lingering_processes()

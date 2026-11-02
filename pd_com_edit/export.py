@@ -19,17 +19,22 @@ class ImageExporter:
     """Exports diagrams to image files with automatic whitespace cropping."""
 
     @staticmethod
-    def export(diagram: Any, output_path: str, format_name: str = "PNG", auto_crop: bool = True, padding: int = 25) -> bool:
+    def export(diagram: Any, output_path: str, format_name: str = "PNG", auto_crop: bool = True, padding: int = 25, margin: Optional[int] = None) -> bool:
         """
         Export a single diagram to an image file.
         If auto_crop=True, crops unnecessary white background canvas margins using numpy/PIL.
         """
+        if margin is not None:
+            padding = margin
         if not os.path.isabs(output_path):
             output_path = os.path.abspath(output_path)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         try:
-            diagram.ExportImage(output_path, format_name)
+            try:
+                diagram.ExportImage(output_path)
+            except Exception:
+                diagram.ExportImage(output_path, format_name)
         except Exception as e:
             print(f"[ImageExporter] COM ExportImage error: {e}")
             return False

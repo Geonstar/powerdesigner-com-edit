@@ -11,6 +11,7 @@ Features:
 from typing import Dict, Tuple, List, Optional, Any
 from .collision import CollisionDetector
 from .client import attach_link_symbol
+from .config import get_config, apply_jitter, JitterConfig
 
 
 class ComponentDiagramBuilder:
@@ -26,6 +27,7 @@ class ComponentDiagramBuilder:
         spacing_x: int = 18000,
         start_y: int = 12000,
         spacing_y: int = -8000,
+        jitter: Optional[JitterConfig] = None,
     ):
         self.diagram = diagram
         self.model = diagram.Model
@@ -33,6 +35,7 @@ class ComponentDiagramBuilder:
         self.spacing_x = spacing_x
         self.start_y = start_y
         self.spacing_y = spacing_y
+        self.jitter = jitter or get_config().jitter
 
         self.components: Dict[str, Tuple[Any, Any]] = {}
         self.interfaces: Dict[str, Tuple[Any, Any]] = {}
@@ -53,6 +56,7 @@ class ComponentDiagramBuilder:
         idx = len(self.components)
         pos_x = x if x is not None else (self.start_x + (idx % 3) * self.spacing_x)
         pos_y = y if y is not None else (self.start_y + (idx // 3) * self.spacing_y)
+        pos_x, pos_y = apply_jitter(pos_x, pos_y, self.jitter)
 
         try:
             if hasattr(sym, "Position"):

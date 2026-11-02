@@ -7,6 +7,7 @@ UML Use Case Diagram Builder with Collision-Free Auto-Layout and Verified Associ
 from typing import Dict, Tuple, List, Optional, Any
 from .collision import CollisionDetector
 from .client import attach_link_symbol, KIND_ACTOR, KIND_USECASE, KIND_USECASE_ASSOC, KIND_DEPENDENCY
+from .config import get_config, apply_jitter, JitterConfig
 
 
 class UseCaseDiagramBuilder:
@@ -29,6 +30,7 @@ class UseCaseDiagramBuilder:
         col4_x: int = 38000,
         start_y: int = 28000,
         step_y: int = -8000,
+        jitter: Optional[JitterConfig] = None,
     ):
         self.diagram = diagram
         self.model = diagram.Model
@@ -38,6 +40,7 @@ class UseCaseDiagramBuilder:
         self.col4_x = col4_x
         self.start_y = start_y
         self.step_y = step_y
+        self.jitter = jitter or get_config().jitter
 
         self.actors: Dict[str, Tuple[Any, Any]] = {}
         self.use_cases: Dict[str, Tuple[Any, Any]] = {}
@@ -62,7 +65,10 @@ class UseCaseDiagramBuilder:
         except Exception:
             act = self.model.Actors.CreateNew()
 
-        act.SetName(name)
+        try:
+            act.SetName(name)
+        except Exception:
+            act.Name = name
         if code:
             act.Code = code
         elif hasattr(act, "Code") and not act.Code:
@@ -75,6 +81,7 @@ class UseCaseDiagramBuilder:
         default_x = self.col4_x if (is_secondary or column >= 4) else self.col1_x
         pos_x = x if x is not None else default_x
         pos_y = y if y is not None else (self.start_y + idx * self.step_y)
+        pos_x, pos_y = apply_jitter(pos_x, pos_y, self.jitter)
 
         try:
             if hasattr(sym, "Position"):
@@ -113,7 +120,10 @@ class UseCaseDiagramBuilder:
             uc = self.model.UseCases.CreateNew()
 
         full_name = f"{code} {name}".strip() if code else name
-        uc.SetName(full_name)
+        try:
+            uc.SetName(full_name)
+        except Exception:
+            uc.Name = full_name
         if code:
             uc.Code = code
 
@@ -123,6 +133,7 @@ class UseCaseDiagramBuilder:
         col_x = self.col2_x if column <= 2 else self.col3_x
         pos_x = x if x is not None else col_x
         pos_y = y if y is not None else (self.start_y + idx * self.step_y)
+        pos_x, pos_y = apply_jitter(pos_x, pos_y, self.jitter)
 
         try:
             if hasattr(sym, "Position"):

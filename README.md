@@ -25,6 +25,7 @@ python powerdesigner-com-edit/install.py --scope project
 ```
 
 This places the skill in the standard project agent skill directories:
+- `.dsh/skills/powerdesigner-com-edit` (DeepSeek Harness project skill)
 - `.agents/skills/powerdesigner-com-edit` (Universal Agent standard)
 - `.claude/skills/powerdesigner-com-edit` (Claude Code workspace skill)
 - `.gemini/skills/powerdesigner-com-edit` (Antigravity workspace skill)
@@ -47,10 +48,11 @@ Installs the skill into your user home directory so it is active in any terminal
 git clone https://github.com/NekoCCN/powerdesigner-com-edit.git
 cd powerdesigner-com-edit
 
-# Install for all detected AI agents (Claude Code + Antigravity)
+# Install for all detected AI agents (DSH + Claude Code + Antigravity)
 python install.py --scope global
 
 # Or target a specific platform:
+python install.py --target dsh       # Only ~/.dsh/skills (DeepSeek Harness)
 python install.py --target claude    # Only ~/.claude/skills
 python install.py --target gemini    # Only ~/.gemini/skills
 ```
@@ -64,6 +66,10 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Scope global
 
 You can also clone the repository directly into your agent's skill path:
 
+- **DeepSeek Harness / DSH (Global)**:
+  ```bash
+  git clone https://github.com/NekoCCN/powerdesigner-com-edit.git ~/.dsh/skills/powerdesigner-com-edit
+  ```
 - **Claude Code (Global)**:
   ```bash
   git clone https://github.com/NekoCCN/powerdesigner-com-edit.git ~/.claude/skills/powerdesigner-com-edit
@@ -74,7 +80,7 @@ You can also clone the repository directly into your agent's skill path:
   ```
 - **Project-Local (Current Workspace)**:
   ```bash
-  git clone https://github.com/NekoCCN/powerdesigner-com-edit.git .agents/skills/powerdesigner-com-edit
+  git clone https://github.com/NekoCCN/powerdesigner-com-edit.git .dsh/skills/powerdesigner-com-edit
   ```
 
 ### Python Package & CLI Setup
@@ -84,6 +90,67 @@ If you want to run the CLI tool (`pd-edit`) or import `pd_com_edit` directly in 
 cd powerdesigner-com-edit
 pip install -e .
 ```
+
+---
+
+## Project Management, Configuration & Visual Jitter
+
+### 1. Centralized Configuration (`pd_config.json`)
+
+To avoid repeated code adjustments, the framework looks for `pd_config.json` (or `pd_config.yaml`) in the current or parent directory. You can customize layout spacing, coordinate jitter, export formats, and workspace paths in one place:
+
+```json
+{
+  "jitter": {
+    "enabled": false,
+    "range_x": [-400, 400],
+    "range_y": [-300, 300],
+    "seed": null
+  },
+  "workspace": {
+    "auto_detect": true,
+    "auto_register": true,
+    "auto_create": true,
+    "workspace_name": "ProjectWorkspace"
+  },
+  "file_naming": {
+    "separate_files": true,
+    "output_dir": "./output_models",
+    "prefix": "图_",
+    "suffix": "_工程"
+  }
+}
+```
+
+### 2. Random Visual Jitter (随机坐标微调)
+To prevent diagrams from appearing unnaturally rigid and robotic while preserving diagram readability, enable `jitter`. It introduces subtle coordinate perturbation `(dx, dy)` within safe ranges for symbols:
+```python
+from pd_com_edit import PDConfig, JitterConfig, set_config
+
+# Enable subtle jitter with reproducible seed
+set_config(PDConfig(
+    jitter=JitterConfig(enabled=True, range_x=(-250, 250), range_y=(-200, 200), seed=42)
+))
+```
+
+### 3. Dedicated Model File per Diagram (单图独立文件保存)
+Rather than jamming multiple distinct diagrams into a single monolithic model file, best practices dictate saving each diagram as an independent, clearly named model file:
+```python
+# Create model with formatted name:
+model = client.create_diagram_model("01_U1概念模型类图", model_type="OOM")
+
+# ... build diagram ...
+
+# Automatically saves to ./output_models/图_01_U1概念模型类图_工程.oom
+# and automatically registers the file into the project's .sws workspace!
+client.save_diagram_as_file(model, "01_U1概念模型类图")
+```
+
+### 4. PowerDesigner Workspace Management (`.sws` / `.pbw`)
+When managing complex systems with multiple diagrams (Use Case, Sequence, Communication, PDM):
+- The `WorkspaceManager` checks if PowerDesigner already has an active workspace open, or searches for existing `.sws` files.
+- If none is found, it automatically creates `ProjectWorkspace.sws`.
+- When each model is saved via `save_diagram_as_file()` or `save_model()`, it is automatically registered into the workspace XML and COM tree. Opening the `.sws` file in PowerDesigner presents all your models neatly organized in the Browser navigation tree!
 
 ---
 
@@ -332,6 +399,15 @@ client.close_model(model)
 ## CLI Reference (`pd-edit`)
 
 ```bash
+# Initialize external configuration file (pd_config.json)
+pd-edit init-config
+
+# List all models registered in the workspace
+pd-edit workspace --list
+
+# Scan directory and synchronize new .oom/.pdm models into workspace
+pd-edit workspace --sync ./output_models
+
 # Check model for symbol overlaps and draft notes
 pd-edit audit --model path/to/model.oom
 
@@ -351,7 +427,8 @@ pd-edit kill-pd
 
 ```
 powerdesigner-com-edit/
-├── SKILL.md                      # Agent Skill specification (Claude Code & Antigravity)
+├── SKILL.md                      # Agent Skill specification (DeepSeek Harness, Claude Code, Antigravity)
+├── pd_config.json                # Central external configuration (jitter, workspace, naming)
 ├── install.py                    # Multi-platform & project-level skill installer
 ├── install.ps1                   # PowerShell installer script
 ├── docs/                         # Documentation assets & real production diagrams
@@ -362,12 +439,20 @@ powerdesigner-com-edit/
 │       ├── domain-class-model.png
 │       └── system-architecture.png
 ├── pd_com_edit/                  # Core Python package
-│   ├── client.py                 # COM lifecycle and process safety
+│   ├── client.py                 # COM lifecycle, dedicated diagrams, and process safety
+│   ├── config.py                 # Central config schema, loader, and coordinate jitter
+│   ├── workspace.py              # PowerDesigner Workspace (.sws) manager and XML sync
+│   ├── pipeline.py               # Declarative one-shot diagram builders
 │   ├── collision.py              # AABB collision detector and auditor
-│   ├── sequence.py               # Sequence builder with activation bar stacking
-│   ├── usecase.py                # 3-column use case layout builder
-│   ├── class_diagram.py          # Class diagram builder
-│   ├── pdm.py                    # PDM tables, columns, references
+│   ├── sequence.py               # Sequence builder with activation bar stacking & jitter
+│   ├── usecase.py                # 3-column use case layout builder & jitter
+│   ├── class_diagram.py          # Class diagram builder & jitter
+│   ├── communication.py          # Collaboration / communication diagram builder
+│   ├── activity.py               # Activity diagram workflow builder
+│   ├── statechart.py             # State machine diagram builder
+│   ├── component.py              # Component diagram builder
+│   ├── deployment.py             # Deployment topology builder
+│   ├── pdm.py                    # PDM tables, columns, references & jitter
 │   ├── export.py                 # PNG export with Pillow/NumPy cropping
 │   └── cli.py                    # pd-edit CLI tool
 ├── examples/                     # Ready-to-run examples
@@ -376,7 +461,9 @@ powerdesigner-com-edit/
 │   ├── 03_pdm_database_schema.py
 │   ├── 04_batch_diagram_auditor.py
 │   ├── 05_cold_chain_allocation_pipeline.py
-│   └── 06_domain_model_class_hierarchy.py
+│   ├── 06_domain_model_class_hierarchy.py
+│   ├── 07_collaboration_diagram.py
+│   └── 08_workspace_and_multi_diagram_management.py
 ├── references/                   # Reference notes and cheat sheets
 │   ├── com_api_cheatsheet.md
 │   ├── overlap_detection_guide.md
@@ -386,7 +473,9 @@ powerdesigner-com-edit/
 ├── scripts/
 │   └── pd_automation.py          # Standalone all-in-one script
 ├── tests/
-│   └── test_collision_detector.py# Offline unit tests
+│   ├── test_collision_detector.py# Offline unit tests
+│   ├── test_config_and_workspace.py # Config and workspace tests
+│   └── test_declarative_pipeline.py # Declarative pipeline builder tests
 ├── pyproject.toml
 └── README.md
 ```
@@ -395,7 +484,7 @@ powerdesigner-com-edit/
 
 ## 中文说明
 
-`powerdesigner-com-edit` 既是一个标准的 **AI Agent Skill**（适配 Claude Code、Google Antigravity、Codex 等），也是一套可以通过 Windows COM 接口（`PowerDesigner.Application`）操控 SAP PowerDesigner 的 Python 工具库与命令行工具。
+`powerdesigner-com-edit` 既是一个标准的 **AI Agent Skill**（适配 DeepSeek Harness、Claude Code、Google Antigravity、Codex 等），也是一套可以通过 Windows COM 接口（`PowerDesigner.Application`）操控 SAP PowerDesigner 的 Python 工具库与命令行工具。
 
 ### Skill 安装与配置
 
@@ -407,6 +496,7 @@ powerdesigner-com-edit/
 python path/to/powerdesigner-com-edit/install.py --scope project
 ```
 安装器会自动将 Skill 部署到项目本地目录：
+- `.dsh/skills/powerdesigner-com-edit` (DeepSeek Harness)
 - `.agents/skills/powerdesigner-com-edit`
 - `.claude/skills/powerdesigner-com-edit`
 - `.gemini/skills/powerdesigner-com-edit`

@@ -11,6 +11,7 @@ Features:
 from typing import Dict, Tuple, List, Optional, Any
 from .collision import CollisionDetector
 from .client import attach_link_symbol
+from .config import get_config, apply_jitter, JitterConfig
 
 
 class StatechartDiagramBuilder:
@@ -28,6 +29,7 @@ class StatechartDiagramBuilder:
         step_y: int = -8000,
         state_width: int = 12000,
         state_height: int = 5000,
+        jitter: Optional[JitterConfig] = None,
     ):
         self.diagram = diagram
         self.model = diagram.Model
@@ -37,6 +39,7 @@ class StatechartDiagramBuilder:
         self.step_y = step_y
         self.state_width = state_width
         self.state_height = state_height
+        self.jitter = jitter or get_config().jitter
 
         self.states: Dict[str, Tuple[Any, Any]] = {}
         self.transitions: List[Tuple[Any, Any]] = []
@@ -57,6 +60,7 @@ class StatechartDiagramBuilder:
         idx = len(self.states)
         pos_x = x if x is not None else (self.start_x + (idx % 4) * self.step_x)
         pos_y = y if y is not None else (self.start_y + (idx // 4) * self.step_y)
+        pos_x, pos_y = apply_jitter(pos_x, pos_y, self.jitter)
         w = width or self.state_width
         h = height or self.state_height
 
